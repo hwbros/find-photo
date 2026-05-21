@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>find-photo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 24px;
+    }
+
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+    p.subtitle { color: #888; margin-bottom: 48px; }
+
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 32px;
+      width: 100%;
+      max-width: 560px;
+    }
+
+    label { display: block; font-size: 0.85rem; color: #aaa; margin-bottom: 8px; }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 10px 14px;
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #e0e0e0;
+      font-size: 0.95rem;
+      margin-bottom: 16px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus { border-color: #555; }
+
+    button {
+      width: 100%;
+      padding: 11px;
+      border-radius: 8px;
+      border: none;
+      font-size: 0.95rem;
+      cursor: pointer;
+      font-weight: 600;
+      transition: opacity 0.15s;
+    }
+    button:disabled { opacity: 0.4; cursor: default; }
+
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover:not(:disabled) { opacity: 0.85; }
+    .btn-secondary { background: #2a2a2a; color: #ccc; margin-top: 8px; }
+    .btn-secondary:hover:not(:disabled) { background: #333; }
+
+    .status {
+      margin-top: 20px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      display: none;
+    }
+    .status.success { background: #052e16; border: 1px solid #166534; color: #4ade80; }
+    .status.error   { background: #2d0000; border: 1px solid #7f1d1d; color: #f87171; }
+    .status.info    { background: #0c1a2e; border: 1px solid #1e3a5f; color: #60a5fa; }
+
+    .dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+    .dot.green  { background: #22c55e; }
+    .dot.red    { background: #ef4444; }
+    .dot.yellow { background: #eab308; }
+
+    .auth-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 24px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid #2a2a2a;
+    }
+    .auth-label { font-size: 0.9rem; flex: 1; }
+  </style>
+</head>
+<body>
+  <h1>find-photo</h1>
+  <p class="subtitle">대회 사진 속 나를 찾아드립니다</p>
+
+  <div class="card">
+    <div class="auth-row">
+      <span class="dot" id="authDot"></span>
+      <span class="auth-label" id="authLabel">Google 인증 확인 중...</span>
+      <button class="btn-secondary" id="loginBtn" style="width:auto;padding:8px 16px" onclick="login()">로그인</button>
+    </div>
+
+    <label>Google Drive 폴더 URL</label>
+    <input type="text" id="folderUrl" placeholder="https://drive.google.com/drive/folders/..." />
+
+    <button class="btn-primary" id="connectBtn" onclick="connect()" disabled>폴더 연결</button>
+
+    <div class="status" id="status"></div>
+  </div>
+
+  <script>
+    async function checkAuth() {
+      const res = await fetch('/api/auth/status');
+      const data = await res.json();
+      setAuthState(data.authenticated);
+    }
+
+    function setAuthState(authenticated) {
+      const dot = document.getElementById('authDot');
+      const label = document.getElementById('authLabel');
+      const btn = document.getElementById('connectBtn');
+      const loginBtn = document.getElementById('loginBtn');
+
+      if (authenticated) {
+        dot.className = 'dot green';
+        label.textContent = 'Google Drive 연결됨';
+        loginBtn.style.display = 'none';
+        btn.disabled = false;
+      } else {
+        dot.className = 'dot red';
+        label.textContent = '인증 필요';
+        loginBtn.style.display = '';
+        btn.disabled = true;
+      }
+    }
+
+    async function login() {
+      showStatus('Google 로그인 중... 브라우저 창이 열립니다.', 'info');
+      document.getElementById('loginBtn').disabled = true;
+      const res = await fetch('/api/auth/login', { method: 'POST' });
+      const data = await res.json();
+      document.getElementById('loginBtn').disabled = false;
+      if (data.authenticated) {
+        setAuthState(true);
+        showStatus('로그인 성공!', 'success');
+      } else {
+        showStatus('로그인 실패. credentials.json을 확인하세요.', 'error');
+      }
+    }
+
+    async function connect() {
+      const folderUrl = document.getElementById('folderUrl').value.trim();
+      if (!folderUrl) return;
+
+      const btn = document.getElementById('connectBtn');
+      btn.disabled = true;
+      btn.textContent = '연결 중...';
+      showStatus('폴더를 읽는 중...', 'info');
+
+      try {
+        const res = await fetch('/api/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder_url: folderUrl }),
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          showStatus(`✓ 사진 ${data.photo_count.toLocaleString()}장 발견`, 'success');
+        } else {
+          showStatus(data.detail || '연결 실패', 'error');
+        }
+      } catch (e) {
+        showStatus('서버 오류: ' + e.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '폴더 연결';
+      }
+    }
+
+    function showStatus(msg, type) {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = 'status ' + type;
+      el.style.display = 'block';
+    }
+
+    checkAuth();
+  </script>
+</body>
+</html>
