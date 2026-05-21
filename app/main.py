@@ -1,13 +1,22 @@
+import json
+import threading
+import asyncio
+
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.drive_connector import DriveConnector, PhotoMeta
+from app.bib_extractor import BibExtractor
+from app.drive_connector import DriveConnector
+from app.index_store import IndexStore
+from app import indexer as indexer_module
 
 app = FastAPI(title="find-photo")
 
 connector = DriveConnector()
+store = IndexStore()
+bib_extractor = BibExtractor()
 
 
 @app.on_event("startup")
@@ -20,15 +29,7 @@ def startup():
             pass
 
 
-class ConnectRequest(BaseModel):
-    folder_url: str
-
-
-class ConnectResponse(BaseModel):
-    folder_id: str
-    photo_count: int
-    photos: list[PhotoMeta]
-
+# ── Auth ──────────────────────────────────────────────────────────────────────
 
 @app.get("/api/auth/status")
 def auth_status():
@@ -41,27 +42,105 @@ def login():
         connector.authenticate()
         return {"authenticated": True}
     except FileNotFoundError:
-        raise HTTPException(
-            status_code=400,
-            detail="credentials.json not found. See docs/setup-google-cloud.md",
-        )
+        raise HTTPException(status_code=400, detail="credentials.json not found")
 
 
+# ── Drive folder ──────────────────────────────────────────────────────────────
 
-@app.post("/api/connect", response_model=ConnectResponse)
+class ConnectRequest(BaseModel):
+    folder_url: str
+
+
+@app.post("/api/connect")
 def connect(req: ConnectRequest):
     if not connector.is_authenticated():
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
         folder_id = DriveConnector.parse_folder_id(req.folder_url)
         photos = connector.list_photos(req.folder_url)
-        return ConnectResponse(
-            folder_id=folder_id,
-            photo_count=len(photos),
-            photos=photos,
-        )
+        status = store.get_folder_status(folder_id)
+        return {
+            "folder_id": folder_id,
+            "photo_count": len(photos),
+            "index_status": status,
+        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ── Indexing ──────────────────────────────────────────────────────────────────
+
+@app.get("/api/index/{folder_id}/status")
+def index_status(folder_id: str):
+    status = store.get_folder_status(folder_id)
+    if not status:
+        return {"status": "not_indexed"}
+    return status
+
+
+@app.post("/api/index")
+async def start_index(req: ConnectRequest):
+    if not connector.is_authenticated():
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    async def generate():
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+
+        def run_in_thread():
+            try:
+                for progress in indexer_module.run(
+                    req.folder_url, connector, store, bib_extractor
+                ):
+                    loop.call_soon_threadsafe(queue.put_nowait, progress)
+            except Exception as e:
+                loop.call_soon_threadsafe(queue.put_nowait, {"stage": "error", "message": str(e)})
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        t = threading.Thread(target=run_in_thread, daemon=True)
+        t.start()
+
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.delete("/api/index/{folder_id}")
+def clear_index(folder_id: str):
+    store.clear_folder(folder_id)
+    return {"cleared": True}
+
+
+# ── Search ────────────────────────────────────────────────────────────────────
+
+class SearchRequest(BaseModel):
+    folder_url: str
+    bib_number: str
+
+
+@app.post("/api/search")
+def search(req: SearchRequest):
+    folder_id = DriveConnector.parse_folder_id(req.folder_url)
+    if not store.is_indexed(folder_id):
+        raise HTTPException(status_code=400, detail="폴더가 인덱싱되지 않았습니다")
+
+    bib_results = store.search_by_bib(folder_id, req.bib_number.strip())
+    results = [
+        {
+            "photo_id": r["photo_id"],
+            "photo_name": r["photo_name"],
+            "drive_url": r["drive_url"],
+            "match_type": "bib",
+            "thumbnail_url": f"https://drive.google.com/thumbnail?id={r['photo_id']}&sz=w400",
+        }
+        for r in bib_results
+    ]
+    return {"results": results, "total": len(results)}
 
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

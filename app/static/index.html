@@ -6,190 +6,335 @@
   <title>find-photo</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #0f0f0f;
-      color: #e0e0e0;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 48px 24px;
+      background: #0f0f0f; color: #e0e0e0;
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; padding: 48px 24px 80px;
     }
-
-    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
-    p.subtitle { color: #888; margin-bottom: 48px; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 6px; }
+    p.subtitle { color: #888; margin-bottom: 40px; }
 
     .card {
-      background: #1a1a1a;
-      border: 1px solid #2a2a2a;
-      border-radius: 12px;
-      padding: 32px;
-      width: 100%;
-      max-width: 560px;
+      background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px;
+      padding: 28px 32px; width: 100%; max-width: 600px; margin-bottom: 16px;
     }
+    .card-title { font-size: 0.8rem; text-transform: uppercase; letter-spacing: .08em;
+      color: #666; margin-bottom: 16px; }
 
-    label { display: block; font-size: 0.85rem; color: #aaa; margin-bottom: 8px; }
-
+    label { display: block; font-size: 0.85rem; color: #aaa; margin-bottom: 6px; }
     input[type="text"] {
-      width: 100%;
-      padding: 10px 14px;
-      background: #111;
-      border: 1px solid #333;
-      border-radius: 8px;
-      color: #e0e0e0;
-      font-size: 0.95rem;
-      margin-bottom: 16px;
-      outline: none;
-      transition: border-color 0.15s;
+      width: 100%; padding: 10px 14px; background: #111; border: 1px solid #333;
+      border-radius: 8px; color: #e0e0e0; font-size: 0.95rem; margin-bottom: 12px;
+      outline: none; transition: border-color 0.15s;
     }
     input[type="text"]:focus { border-color: #555; }
 
     button {
-      width: 100%;
-      padding: 11px;
-      border-radius: 8px;
-      border: none;
-      font-size: 0.95rem;
-      cursor: pointer;
-      font-weight: 600;
-      transition: opacity 0.15s;
+      padding: 10px 20px; border-radius: 8px; border: none; font-size: 0.9rem;
+      cursor: pointer; font-weight: 600; transition: opacity 0.15s;
     }
-    button:disabled { opacity: 0.4; cursor: default; }
-
+    button:disabled { opacity: 0.35; cursor: default; }
     .btn-primary { background: #2563eb; color: #fff; }
     .btn-primary:hover:not(:disabled) { opacity: 0.85; }
-    .btn-secondary { background: #2a2a2a; color: #ccc; margin-top: 8px; }
-    .btn-secondary:hover:not(:disabled) { background: #333; }
+    .btn-ghost { background: #222; color: #bbb; }
+    .btn-ghost:hover:not(:disabled) { background: #2a2a2a; }
+    .btn-danger { background: #7f1d1d; color: #fca5a5; }
+    .btn-danger:hover:not(:disabled) { opacity: 0.85; }
 
-    .status {
-      margin-top: 20px;
-      padding: 12px 16px;
-      border-radius: 8px;
-      font-size: 0.9rem;
-      display: none;
-    }
-    .status.success { background: #052e16; border: 1px solid #166534; color: #4ade80; }
-    .status.error   { background: #2d0000; border: 1px solid #7f1d1d; color: #f87171; }
-    .status.info    { background: #0c1a2e; border: 1px solid #1e3a5f; color: #60a5fa; }
+    .row { display: flex; gap: 10px; align-items: flex-end; }
+    .row input { flex: 1; margin-bottom: 0; }
 
-    .dot {
-      display: inline-block;
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      margin-right: 6px;
-    }
-    .dot.green  { background: #22c55e; }
-    .dot.red    { background: #ef4444; }
-    .dot.yellow { background: #eab308; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+    .dot.green { background: #22c55e; }
+    .dot.red   { background: #ef4444; }
 
-    .auth-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 24px;
-      padding-bottom: 24px;
-      border-bottom: 1px solid #2a2a2a;
-    }
+    .auth-row { display: flex; align-items: center; gap: 10px; }
     .auth-label { font-size: 0.9rem; flex: 1; }
+
+    .info { font-size: 0.9rem; color: #60a5fa; margin-top: 12px; }
+    .success { font-size: 0.9rem; color: #4ade80; margin-top: 12px; }
+    .error { font-size: 0.9rem; color: #f87171; margin-top: 12px; }
+
+    /* Progress */
+    .progress-wrap { margin-top: 16px; }
+    .progress-bar-bg { background: #2a2a2a; border-radius: 6px; height: 8px; overflow: hidden; }
+    .progress-bar { background: #2563eb; height: 100%; width: 0%; transition: width 0.3s; border-radius: 6px; }
+    .progress-text { font-size: 0.82rem; color: #888; margin-top: 6px; }
+
+    /* Results grid */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-top: 16px; }
+    .thumb-card {
+      background: #111; border: 1px solid #222; border-radius: 8px; overflow: hidden;
+      cursor: pointer; transition: border-color 0.15s;
+    }
+    .thumb-card:hover { border-color: #444; }
+    .thumb-card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: #1a1a1a; }
+    .thumb-info { padding: 8px; }
+    .thumb-name { font-size: 0.72rem; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .badge {
+      display: inline-block; font-size: 0.68rem; font-weight: 700; padding: 2px 6px;
+      border-radius: 4px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em;
+    }
+    .badge-bib  { background: #1e3a5f; color: #60a5fa; }
+    .badge-face { background: #1a2e1a; color: #4ade80; }
+    .badge-both { background: #3b1a5f; color: #c084fc; }
+
+    .hidden { display: none; }
   </style>
 </head>
 <body>
   <h1>find-photo</h1>
   <p class="subtitle">대회 사진 속 나를 찾아드립니다</p>
 
+  <!-- Auth -->
   <div class="card">
+    <div class="card-title">Google 인증</div>
     <div class="auth-row">
-      <span class="dot" id="authDot"></span>
-      <span class="auth-label" id="authLabel">Google 인증 확인 중...</span>
-      <button class="btn-secondary" id="loginBtn" style="width:auto;padding:8px 16px" onclick="login()">로그인</button>
+      <span class="dot red" id="authDot"></span>
+      <span class="auth-label" id="authLabel">확인 중...</span>
+      <button class="btn-ghost" id="loginBtn" onclick="login()">로그인</button>
     </div>
+  </div>
 
+  <!-- Connect -->
+  <div class="card">
+    <div class="card-title">Drive 폴더</div>
     <label>Google Drive 폴더 URL</label>
-    <input type="text" id="folderUrl" placeholder="https://drive.google.com/drive/folders/..." />
+    <div class="row">
+      <input type="text" id="folderUrl" placeholder="https://drive.google.com/drive/folders/..." />
+      <button class="btn-primary" id="connectBtn" onclick="connect()" disabled>연결</button>
+    </div>
+    <div id="connectStatus"></div>
+  </div>
 
-    <button class="btn-primary" id="connectBtn" onclick="connect()" disabled>폴더 연결</button>
+  <!-- Index -->
+  <div class="card hidden" id="indexCard">
+    <div class="card-title">인덱싱</div>
+    <div id="indexStatus" style="font-size:0.9rem; color:#aaa; margin-bottom:12px;"></div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn-primary" id="indexBtn" onclick="startIndex()">인덱싱 시작</button>
+      <button class="btn-danger hidden" id="reindexBtn" onclick="reindex()">재인덱싱</button>
+    </div>
+    <div class="progress-wrap hidden" id="progressWrap">
+      <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="progress-text" id="progressText"></div>
+    </div>
+    <div id="indexResult"></div>
+  </div>
 
-    <div class="status" id="status"></div>
+  <!-- Search -->
+  <div class="card hidden" id="searchCard">
+    <div class="card-title">검색</div>
+    <label>배번호</label>
+    <div class="row">
+      <input type="text" id="bibInput" placeholder="예: 1234" />
+      <button class="btn-primary" id="searchBtn" onclick="search()">검색</button>
+    </div>
+    <div id="searchStatus"></div>
+    <div class="grid" id="resultsGrid"></div>
   </div>
 
   <script>
+    let folderId = null;
+
+    // ── Auth ──────────────────────────────────────────────────────────────────
+
     async function checkAuth() {
       const res = await fetch('/api/auth/status');
-      const data = await res.json();
-      setAuthState(data.authenticated);
+      const { authenticated } = await res.json();
+      setAuth(authenticated);
     }
 
-    function setAuthState(authenticated) {
-      const dot = document.getElementById('authDot');
-      const label = document.getElementById('authLabel');
-      const btn = document.getElementById('connectBtn');
-      const loginBtn = document.getElementById('loginBtn');
-
-      if (authenticated) {
-        dot.className = 'dot green';
-        label.textContent = 'Google Drive 연결됨';
-        loginBtn.style.display = 'none';
-        btn.disabled = false;
-      } else {
-        dot.className = 'dot red';
-        label.textContent = '인증 필요';
-        loginBtn.style.display = '';
-        btn.disabled = true;
-      }
+    function setAuth(ok) {
+      document.getElementById('authDot').className = 'dot ' + (ok ? 'green' : 'red');
+      document.getElementById('authLabel').textContent = ok ? 'Google Drive 연결됨' : '인증 필요';
+      document.getElementById('loginBtn').style.display = ok ? 'none' : '';
+      document.getElementById('connectBtn').disabled = !ok;
     }
 
     async function login() {
-      showStatus('Google 로그인 중... 브라우저 창이 열립니다.', 'info');
       document.getElementById('loginBtn').disabled = true;
-      const res = await fetch('/api/auth/login', { method: 'POST' });
-      const data = await res.json();
+      await fetch('/api/auth/login', { method: 'POST' });
+      await checkAuth();
       document.getElementById('loginBtn').disabled = false;
-      if (data.authenticated) {
-        setAuthState(true);
-        showStatus('로그인 성공!', 'success');
-      } else {
-        showStatus('로그인 실패. credentials.json을 확인하세요.', 'error');
-      }
     }
+
+    // ── Connect ───────────────────────────────────────────────────────────────
 
     async function connect() {
-      const folderUrl = document.getElementById('folderUrl').value.trim();
-      if (!folderUrl) return;
-
+      const url = document.getElementById('folderUrl').value.trim();
+      if (!url) return;
       const btn = document.getElementById('connectBtn');
-      btn.disabled = true;
-      btn.textContent = '연결 중...';
-      showStatus('폴더를 읽는 중...', 'info');
+      btn.disabled = true; btn.textContent = '연결 중...';
+      setEl('connectStatus', '');
 
-      try {
-        const res = await fetch('/api/connect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ folder_url: folderUrl }),
-        });
-        const data = await res.json();
+      const res = await fetch('/api/connect', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder_url: url }),
+      });
+      const data = await res.json();
+      btn.disabled = false; btn.textContent = '연결';
 
-        if (res.ok) {
-          showStatus(`✓ 사진 ${data.photo_count.toLocaleString()}장 발견`, 'success');
-        } else {
-          showStatus(data.detail || '연결 실패', 'error');
-        }
-      } catch (e) {
-        showStatus('서버 오류: ' + e.message, 'error');
-      } finally {
-        btn.disabled = false;
-        btn.textContent = '폴더 연결';
+      if (!res.ok) { setEl('connectStatus', data.detail, 'error'); return; }
+
+      folderId = data.folder_id;
+      setEl('connectStatus', `✓ 사진 ${data.photo_count.toLocaleString()}장 발견`, 'success');
+      showIndexCard(data.index_status);
+    }
+
+    // ── Index ─────────────────────────────────────────────────────────────────
+
+    function showIndexCard(status) {
+      show('indexCard');
+      const indexBtn = document.getElementById('indexBtn');
+      const reindexBtn = document.getElementById('reindexBtn');
+      const indexStatus = document.getElementById('indexStatus');
+
+      if (!status) {
+        indexStatus.textContent = '아직 인덱싱되지 않았습니다.';
+        indexBtn.style.display = ''; reindexBtn.classList.add('hidden');
+      } else if (status.status === 'complete') {
+        indexStatus.textContent = `인덱싱 완료 — ${status.indexed.toLocaleString()}장`;
+        indexBtn.style.display = 'none'; reindexBtn.classList.remove('hidden');
+        showSearchCard();
+      } else {
+        indexStatus.textContent = `인덱싱 중단됨 (${status.indexed}/${status.total})`;
+        indexBtn.textContent = '이어서 인덱싱'; indexBtn.style.display = '';
+        reindexBtn.classList.remove('hidden');
       }
     }
 
-    function showStatus(msg, type) {
-      const el = document.getElementById('status');
-      el.textContent = msg;
-      el.className = 'status ' + type;
-      el.style.display = 'block';
+    async function startIndex() {
+      const url = document.getElementById('folderUrl').value.trim();
+      document.getElementById('indexBtn').disabled = true;
+      show('progressWrap');
+      setEl('indexResult', '');
+
+      const es = new EventSource('/api/index?' + new URLSearchParams({ folder_url: url }));
+
+      // SSE via POST requires a workaround — use fetch + ReadableStream
+      es.close();
+      await streamIndex(url);
     }
+
+    async function streamIndex(folderUrl) {
+      const res = await fetch('/api/index', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder_url: folderUrl }),
+      });
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const ev = JSON.parse(line.slice(6));
+          handleIndexEvent(ev);
+        }
+      }
+    }
+
+    function handleIndexEvent(ev) {
+      if (ev.stage === 'scanning') {
+        setEl('progressText', ev.message);
+      } else if (ev.stage === 'indexing') {
+        const pct = ev.total ? (ev.current / ev.total * 100) : 0;
+        document.getElementById('progressBar').style.width = pct + '%';
+        document.getElementById('progressText').textContent =
+          `${ev.current.toLocaleString()} / ${ev.total.toLocaleString()}${ev.name ? ' — ' + ev.name : ''}`;
+      } else if (ev.stage === 'done') {
+        document.getElementById('progressBar').style.width = '100%';
+        setEl('indexResult', `✓ 인덱싱 완료 — ${ev.total.toLocaleString()}장`, 'success');
+        document.getElementById('indexBtn').style.display = 'none';
+        document.getElementById('reindexBtn').classList.remove('hidden');
+        document.getElementById('indexBtn').disabled = false;
+        showSearchCard();
+      } else if (ev.stage === 'error') {
+        setEl('indexResult', '오류: ' + ev.message, 'error');
+        document.getElementById('indexBtn').disabled = false;
+      }
+    }
+
+    async function reindex() {
+      if (!folderId) return;
+      if (!confirm('기존 인덱스를 삭제하고 다시 인덱싱할까요?')) return;
+      await fetch(`/api/index/${folderId}`, { method: 'DELETE' });
+      document.getElementById('indexBtn').textContent = '인덱싱 시작';
+      document.getElementById('indexBtn').style.display = '';
+      document.getElementById('indexBtn').disabled = false;
+      document.getElementById('reindexBtn').classList.add('hidden');
+      hide('searchCard');
+      setEl('indexStatus', '아직 인덱싱되지 않았습니다.');
+      setEl('indexResult', '');
+      document.getElementById('progressBar').style.width = '0%';
+    }
+
+    // ── Search ────────────────────────────────────────────────────────────────
+
+    function showSearchCard() { show('searchCard'); }
+
+    async function search() {
+      const url = document.getElementById('folderUrl').value.trim();
+      const bib = document.getElementById('bibInput').value.trim();
+      if (!bib) return;
+
+      document.getElementById('searchBtn').disabled = true;
+      setEl('searchStatus', '검색 중...', 'info');
+      document.getElementById('resultsGrid').innerHTML = '';
+
+      const res = await fetch('/api/search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder_url: url, bib_number: bib }),
+      });
+      const data = await res.json();
+      document.getElementById('searchBtn').disabled = false;
+
+      if (!res.ok) { setEl('searchStatus', data.detail, 'error'); return; }
+
+      if (data.total === 0) {
+        setEl('searchStatus', '결과 없음 — 배번호를 확인해주세요.', 'error');
+        return;
+      }
+
+      setEl('searchStatus', `${data.total}장 발견`, 'success');
+      renderResults(data.results);
+    }
+
+    function renderResults(results) {
+      const grid = document.getElementById('resultsGrid');
+      grid.innerHTML = '';
+      for (const r of results) {
+        const card = document.createElement('a');
+        card.href = r.drive_url; card.target = '_blank'; card.rel = 'noopener';
+        card.className = 'thumb-card';
+        card.innerHTML = `
+          <img src="${r.thumbnail_url}" alt="${r.photo_name}" loading="lazy"
+               onerror="this.style.background='#222';this.style.height='160px'" />
+          <div class="thumb-info">
+            <span class="badge badge-${r.match_type}">${r.match_type}</span>
+            <div class="thumb-name">${r.photo_name}</div>
+          </div>`;
+        grid.appendChild(card);
+      }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    function setEl(id, text, cls) {
+      const el = document.getElementById(id);
+      el.textContent = text;
+      el.className = cls || '';
+    }
+    function show(id) { document.getElementById(id).classList.remove('hidden'); }
+    function hide(id) { document.getElementById(id).classList.add('hidden'); }
 
     checkAuth();
   </script>
