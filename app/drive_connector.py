@@ -73,28 +73,31 @@ class DriveConnector:
             raise RuntimeError("Not authenticated. Call authenticate() first.")
 
         folder_id = self.parse_folder_id(folder_url)
+        return self._list_photos_recursive(folder_id)
+
+    def _list_photos_recursive(self, folder_id: str) -> list[PhotoMeta]:
         photos = []
         page_token = None
 
         while True:
-            query = (
-                f"'{folder_id}' in parents"
-                f" and mimeType != 'application/vnd.google-apps.folder'"
-                f" and trashed = false"
-            )
             resp = (
                 self._service.files()
                 .list(
-                    q=query,
+                    q=f"'{folder_id}' in parents and trashed = false",
                     fields="nextPageToken, files(id, name, mimeType, thumbnailLink, webViewLink)",
                     pageSize=1000,
                     pageToken=page_token,
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
                 )
                 .execute()
             )
 
             for f in resp.get("files", []):
-                if f.get("mimeType") in IMAGE_MIME_TYPES:
+                mime = f.get("mimeType", "")
+                if mime == "application/vnd.google-apps.folder":
+                    photos.extend(self._list_photos_recursive(f["id"]))
+                elif mime in IMAGE_MIME_TYPES:
                     photos.append(
                         PhotoMeta(
                             id=f["id"],

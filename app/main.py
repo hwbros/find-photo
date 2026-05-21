@@ -10,6 +10,16 @@ app = FastAPI(title="find-photo")
 connector = DriveConnector()
 
 
+@app.on_event("startup")
+def startup():
+    from pathlib import Path
+    if Path("data/token.json").exists():
+        try:
+            connector.authenticate()
+        except Exception:
+            pass
+
+
 class ConnectRequest(BaseModel):
     folder_url: str
 
@@ -35,6 +45,7 @@ def login():
             status_code=400,
             detail="credentials.json not found. See docs/setup-google-cloud.md",
         )
+
 
 
 @app.post("/api/connect", response_model=ConnectResponse)

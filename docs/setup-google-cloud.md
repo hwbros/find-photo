@@ -45,12 +45,20 @@ find-photo/
 ## 6. 앱 실행 및 최초 로그인
 
 ```bash
+# 가상환경 활성화 (Git Bash)
+source .venv/Scripts/activate
+
 # 의존성 설치
 pip install -r requirements.txt
 
 # 서버 시작
 uvicorn app.main:app --reload
 ```
+
+> PowerShell을 사용하는 경우:
+> ```powershell
+> .\.venv\Scripts\Activate.ps1
+> ```
 
 브라우저에서 http://localhost:8000 접속 → **로그인** 버튼 클릭 → Google 계정 인증
 
