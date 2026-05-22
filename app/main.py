@@ -2,21 +2,25 @@ import json
 import threading
 import asyncio
 
-from fastapi import FastAPI, HTTPException
+import numpy as np
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.bib_extractor import BibExtractor
 from app.drive_connector import DriveConnector
+from app.face_detector import FaceDetector
 from app.index_store import IndexStore
 from app import indexer as indexer_module
+from app import search_engine
 
 app = FastAPI(title="find-photo")
 
 connector = DriveConnector()
 store = IndexStore()
 bib_extractor = BibExtractor()
+face_detector = FaceDetector()
 
 
 @app.on_event("startup")
@@ -90,7 +94,7 @@ async def start_index(req: ConnectRequest):
         def run_in_thread():
             try:
                 for progress in indexer_module.run(
-                    req.folder_url, connector, store, bib_extractor
+                    req.folder_url, connector, store, bib_extractor, face_detector
                 ):
                     loop.call_soon_threadsafe(queue.put_nowait, progress)
             except Exception as e:
@@ -118,29 +122,40 @@ def clear_index(folder_id: str):
 
 # ── Search ────────────────────────────────────────────────────────────────────
 
-class SearchRequest(BaseModel):
-    folder_url: str
-    bib_number: str
-
-
 @app.post("/api/search")
-def search(req: SearchRequest):
-    folder_id = DriveConnector.parse_folder_id(req.folder_url)
+async def search(
+    folder_url: str = Form(...),
+    bib_number: str = Form(...),
+    reference_photo: UploadFile | None = File(default=None),
+):
+    folder_id = DriveConnector.parse_folder_id(folder_url)
     if not store.is_indexed(folder_id):
         raise HTTPException(status_code=400, detail="폴더가 인덱싱되지 않았습니다")
 
-    bib_results = store.search_by_bib(folder_id, req.bib_number.strip())
-    results = [
-        {
-            "photo_id": r["photo_id"],
-            "photo_name": r["photo_name"],
-            "drive_url": r["drive_url"],
-            "match_type": "bib",
-            "thumbnail_url": f"https://drive.google.com/thumbnail?id={r['photo_id']}&sz=w400",
-        }
-        for r in bib_results
-    ]
-    return {"results": results, "total": len(results)}
+    ref_embedding: np.ndarray | None = None
+    if reference_photo:
+        img_bytes = await reference_photo.read()
+        embeddings = face_detector.detect_faces(img_bytes)
+        if embeddings:
+            ref_embedding = embeddings[0]
+
+    indexed_photos = store.get_all_photos(folder_id)
+    results = search_engine.search(indexed_photos, ref_embedding, bib_number)
+
+    return {
+        "results": [
+            {
+                "photo_id": r.photo_id,
+                "photo_name": r.photo_name,
+                "drive_url": r.drive_url,
+                "match_type": r.match_type,
+                "face_score": r.face_score,
+                "thumbnail_url": f"https://drive.google.com/thumbnail?id={r.photo_id}&sz=w400",
+            }
+            for r in results
+        ],
+        "total": len(results),
+    }
 
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

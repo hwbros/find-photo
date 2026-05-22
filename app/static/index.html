@@ -127,10 +127,12 @@
   <div class="card hidden" id="searchCard">
     <div class="card-title">검색</div>
     <label>배번호</label>
-    <div class="row">
-      <input type="text" id="bibInput" placeholder="예: 1234" />
-      <button class="btn-primary" id="searchBtn" onclick="search()">검색</button>
-    </div>
+    <input type="text" id="bibInput" placeholder="예: 1234" style="margin-bottom:16px" />
+    <label>기준 사진 <span style="color:#555;font-weight:400">(선택 — 얼굴 인식용)</span></label>
+    <input type="file" id="refPhoto" accept="image/*"
+      style="margin-bottom:16px;color:#aaa;background:#111;border:1px solid #333;
+             border-radius:8px;padding:8px 12px;width:100%;cursor:pointer" />
+    <button class="btn-primary" id="searchBtn" onclick="search()">검색</button>
     <div id="searchStatus"></div>
     <div class="grid" id="resultsGrid"></div>
   </div>
@@ -290,10 +292,13 @@
       setEl('searchStatus', '검색 중...', 'info');
       document.getElementById('resultsGrid').innerHTML = '';
 
-      const res = await fetch('/api/search', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder_url: url, bib_number: bib }),
-      });
+      const form = new FormData();
+      form.append('folder_url', url);
+      form.append('bib_number', bib);
+      const refFile = document.getElementById('refPhoto').files[0];
+      if (refFile) form.append('reference_photo', refFile);
+
+      const res = await fetch('/api/search', { method: 'POST', body: form });
       const data = await res.json();
       document.getElementById('searchBtn').disabled = false;
 

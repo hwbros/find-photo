@@ -3,6 +3,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
+
 
 class IndexStore:
     def __init__(self, db_path: str = "data/index.db"):
@@ -46,6 +48,13 @@ class IndexStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_photo_bibs
                     ON photo_bibs(folder_id, bib_number);
+                CREATE TABLE IF NOT EXISTS photo_faces (
+                    folder_id   TEXT NOT NULL,
+                    photo_id    TEXT NOT NULL,
+                    embedding   BLOB NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_photo_faces
+                    ON photo_faces(folder_id, photo_id);
             """)
 
     def is_indexed(self, folder_id: str) -> bool:
@@ -89,6 +98,7 @@ class IndexStore:
         photo_name: str,
         drive_url: str,
         bibs: list[str],
+        embeddings: list[np.ndarray] | None = None,
     ):
         with self._conn() as conn:
             conn.execute(
@@ -104,6 +114,15 @@ class IndexStore:
                 conn.execute(
                     "INSERT INTO photo_bibs (folder_id, photo_id, bib_number) VALUES (?, ?, ?)",
                     (folder_id, photo_id, bib),
+                )
+            conn.execute(
+                "DELETE FROM photo_faces WHERE folder_id = ? AND photo_id = ?",
+                (folder_id, photo_id),
+            )
+            for emb in (embeddings or []):
+                conn.execute(
+                    "INSERT INTO photo_faces (folder_id, photo_id, embedding) VALUES (?, ?, ?)",
+                    (folder_id, photo_id, emb.astype(np.float32).tobytes()),
                 )
             conn.execute(
                 "UPDATE folders SET indexed = indexed + 1 WHERE folder_id = ?",
@@ -125,6 +144,40 @@ class IndexStore:
             ).fetchone()
             return dict(row) if row else None
 
+    def get_all_photos(self, folder_id: str) -> list[dict]:
+        """Return all photos with their bibs and face embeddings for SearchEngine."""
+        with self._conn() as conn:
+            photos = conn.execute(
+                "SELECT photo_id, photo_name, drive_url FROM photos WHERE folder_id = ?",
+                (folder_id,),
+            ).fetchall()
+
+            bibs_map: dict[str, list[str]] = {}
+            for row in conn.execute(
+                "SELECT photo_id, bib_number FROM photo_bibs WHERE folder_id = ?",
+                (folder_id,),
+            ).fetchall():
+                bibs_map.setdefault(row["photo_id"], []).append(row["bib_number"])
+
+            emb_map: dict[str, list[np.ndarray]] = {}
+            for row in conn.execute(
+                "SELECT photo_id, embedding FROM photo_faces WHERE folder_id = ?",
+                (folder_id,),
+            ).fetchall():
+                emb = np.frombuffer(row["embedding"], dtype=np.float32)
+                emb_map.setdefault(row["photo_id"], []).append(emb)
+
+            return [
+                {
+                    "photo_id": p["photo_id"],
+                    "photo_name": p["photo_name"],
+                    "drive_url": p["drive_url"],
+                    "bibs": bibs_map.get(p["photo_id"], []),
+                    "embeddings": emb_map.get(p["photo_id"], []),
+                }
+                for p in photos
+            ]
+
     def search_by_bib(self, folder_id: str, bib_number: str) -> list[dict]:
         with self._conn() as conn:
             rows = conn.execute(
@@ -138,6 +191,7 @@ class IndexStore:
 
     def clear_folder(self, folder_id: str):
         with self._conn() as conn:
+            conn.execute("DELETE FROM photo_faces WHERE folder_id = ?", (folder_id,))
             conn.execute("DELETE FROM photo_bibs WHERE folder_id = ?", (folder_id,))
             conn.execute("DELETE FROM photos WHERE folder_id = ?", (folder_id,))
             conn.execute("DELETE FROM folders WHERE folder_id = ?", (folder_id,))
