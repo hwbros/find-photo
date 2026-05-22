@@ -55,21 +55,34 @@ class ConnectRequest(BaseModel):
     folder_url: str
 
 
+@app.get("/api/folders")
+def list_folders():
+    return {"folders": store.get_recent_folders()}
+
+
 @app.post("/api/connect")
 def connect(req: ConnectRequest):
     if not connector.is_authenticated():
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        raise HTTPException(status_code=401, detail="인증이 필요합니다. 다시 로그인해주세요.")
     try:
         folder_id = DriveConnector.parse_folder_id(req.folder_url)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="올바른 Google Drive 폴더 URL이 아닙니다.")
+    try:
         photos = connector.list_photos(req.folder_url)
-        status = store.get_folder_status(folder_id)
-        return {
-            "folder_id": folder_id,
-            "photo_count": len(photos),
-            "index_status": status,
-        }
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        err = str(e).lower()
+        if "invalid_grant" in err or "token" in err or "auth" in err:
+            raise HTTPException(status_code=401, detail="인증이 만료됐습니다. 다시 로그인해주세요.")
+        if "404" in err or "notfound" in err:
+            raise HTTPException(status_code=404, detail="폴더를 찾을 수 없습니다. URL과 접근 권한을 확인해주세요.")
+        raise HTTPException(status_code=400, detail=f"폴더 접근 실패: {e}")
+    status = store.get_folder_status(folder_id)
+    return {
+        "folder_id": folder_id,
+        "photo_count": len(photos),
+        "index_status": status,
+    }
 
 
 # ── Indexing ──────────────────────────────────────────────────────────────────

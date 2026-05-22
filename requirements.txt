@@ -5,6 +5,6 @@ google-auth-httplib2>=0.2.0
 google-auth-oauthlib>=1.2.0
 python-multipart>=0.0.9
 easyocr>=1.7.0
-
 deepface>=0.0.100
-tf-keras>=2.21.0	onnxruntime-gpu>=1.26.0
+tf-keras>=2.21.0
+onnxruntime-gpu>=1.26.0

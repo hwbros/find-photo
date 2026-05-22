@@ -341,7 +341,25 @@
     function show(id) { document.getElementById(id).classList.remove('hidden'); }
     function hide(id) { document.getElementById(id).classList.add('hidden'); }
 
-    checkAuth();
+    async function init() {
+      await checkAuth();
+      // Auto-restore previously indexed folder
+      try {
+        const res = await fetch('/api/folders');
+        const data = await res.json();
+        const folders = data.folders || [];
+        if (folders.length > 0) {
+          const latest = folders[0];
+          document.getElementById('folderUrl').value = latest.folder_url;
+          folderId = latest.folder_id;
+          const photoCount = latest.total ? `사진 ${latest.total.toLocaleString()}장` : '';
+          setEl('connectStatus', photoCount ? `✓ ${photoCount} (저장된 폴더)` : '✓ 저장된 폴더 복원됨', 'success');
+          showIndexCard(latest);
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    init();
   </script>
 </body>
 </html>

@@ -137,6 +137,14 @@ class IndexStore:
                 (now, folder_id),
             )
 
+    def get_recent_folders(self, limit: int = 10) -> list[dict]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """SELECT * FROM folders ORDER BY started_at DESC LIMIT ?""",
+                (limit,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
     def get_folder_status(self, folder_id: str) -> dict | None:
         with self._conn() as conn:
             row = conn.execute(
