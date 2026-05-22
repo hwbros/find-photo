@@ -1,8 +1,14 @@
 import json
+import logging
 import threading
 import asyncio
 
 import numpy as np
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
@@ -107,7 +113,7 @@ async def start_index(req: ConnectRequest):
         def run_in_thread():
             try:
                 for progress in indexer_module.run(
-                    req.folder_url, connector, store, bib_extractor
+                    req.folder_url, connector, store, bib_extractor, face_detector
                 ):
                     loop.call_soon_threadsafe(queue.put_nowait, progress)
             except Exception as e:
@@ -145,30 +151,48 @@ async def search(
     if not store.is_indexed(folder_id):
         raise HTTPException(status_code=400, detail="폴더가 인덱싱되지 않았습니다")
 
+    log = logging.getLogger(__name__)
+    bib = bib_number.strip()
+
     ref_embedding: np.ndarray | None = None
     if reference_photo:
         img_bytes = await reference_photo.read()
         embs = face_detector.detect_faces(img_bytes)
+        log.info("reference photo: %d face(s) detected", len(embs))
         if embs:
             ref_embedding = embs[0]
+        else:
+            log.warning("no face detected in reference photo — face search disabled")
 
-    # Step 1: bib search from index — O(1), very fast
-    bib_photos = store.search_by_bib(folder_id, bib_number.strip())
+    # Bib search: O(1) DB lookup
+    bib_photos = {p["photo_id"]: p for p in store.search_by_bib(folder_id, bib)}
+    log.info("bib '%s': %d photos", bib, len(bib_photos))
 
-    # Step 2: face detection on bib-matched photos only (download on demand)
-    # This keeps face detection to a small subset instead of all 17,872 photos.
+    # Face search: cosine similarity against stored embeddings — no downloading
+    face_photos: dict[str, dict] = {}
+    if ref_embedding is not None:
+        from app.search_engine import FACE_SIMILARITY_THRESHOLD
+        face_results = store.search_by_face(folder_id, ref_embedding, FACE_SIMILARITY_THRESHOLD)
+        face_photos = {p["photo_id"]: p for p in face_results}
+        log.info("face search: %d photos above threshold", len(face_photos))
+
+    # Merge: OR condition
+    all_ids = set(bib_photos) | set(face_photos)
     photos_for_engine = []
-    for photo in bib_photos:
-        embeddings = []
-        if ref_embedding is not None:
-            try:
-                img = connector.download_photo(photo["photo_id"])
-                embeddings = face_detector.detect_faces(img)
-            except Exception:
-                pass
-        photos_for_engine.append({**photo, "bibs": [bib_number.strip()], "embeddings": embeddings})
+    for pid in all_ids:
+        bib_meta = bib_photos.get(pid)
+        face_meta = face_photos.get(pid)
+        meta = bib_meta or face_meta
+        photos_for_engine.append({
+            "photo_id": pid,
+            "photo_name": meta["photo_name"],
+            "drive_url": meta["drive_url"],
+            "bibs": [bib] if pid in bib_photos else [],
+            "embeddings": [],  # already compared — pass face_score directly
+            "_face_score": face_meta["face_score"] if face_meta else None,
+        })
 
-    results = search_engine.search(photos_for_engine, ref_embedding, bib_number)
+    results = search_engine.search(photos_for_engine, ref_embedding, bib)
 
     return {
         "results": [

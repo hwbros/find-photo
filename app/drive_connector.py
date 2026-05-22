@@ -1,7 +1,10 @@
+import logging
 import re
 import io
 from dataclasses import dataclass
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -16,7 +19,6 @@ IMAGE_MIME_TYPES = {
     "image/png",
     "image/gif",
     "image/webp",
-    "image/heic",
 }
 
 
@@ -36,6 +38,7 @@ class DriveConnector:
     ):
         self._credentials_path = credentials_path
         self._token_path = token_path
+        self._creds = None
         self._service = None
 
     def authenticate(self) -> None:
@@ -56,10 +59,26 @@ class DriveConnector:
                 creds = flow.run_local_server(port=0)
             token_file.write_text(creds.to_json())
 
-        self._service = build("drive", "v3", credentials=creds)
+        self._creds = creds
+        self._service = build("drive", "v3", credentials=creds, cache_discovery=False)
+
+    def _make_service(self):
+        """Return a fresh service instance (one per thread — httplib2 is not thread-safe)."""
+        return build("drive", "v3", credentials=self._creds, cache_discovery=False)
 
     def is_authenticated(self) -> bool:
         return self._service is not None
+
+    def download_photo_threadsafe(self, photo_id: str) -> bytes:
+        """Download using a fresh service per call — safe for concurrent threads."""
+        svc = self._make_service()
+        request = svc.files().get_media(fileId=photo_id)
+        buffer = io.BytesIO()
+        downloader = MediaIoBaseDownload(buffer, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        return buffer.getvalue()
 
     @staticmethod
     def parse_folder_id(folder_url: str) -> str:
@@ -73,9 +92,14 @@ class DriveConnector:
             raise RuntimeError("Not authenticated. Call authenticate() first.")
 
         folder_id = self.parse_folder_id(folder_url)
-        return self._list_photos_recursive(folder_id)
+        visited: set[str] = set()
+        return self._list_photos_recursive(folder_id, visited)
 
-    def _list_photos_recursive(self, folder_id: str) -> list[PhotoMeta]:
+    def _list_photos_recursive(self, folder_id: str, visited: set[str]) -> list[PhotoMeta]:
+        if folder_id in visited:
+            return []
+        visited.add(folder_id)
+
         photos = []
         page_token = None
 
@@ -84,7 +108,11 @@ class DriveConnector:
                 self._service.files()
                 .list(
                     q=f"'{folder_id}' in parents and trashed = false",
-                    fields="nextPageToken, files(id, name, mimeType, thumbnailLink, webViewLink)",
+                    fields=(
+                        "nextPageToken, "
+                        "files(id, name, mimeType, thumbnailLink, webViewLink,"
+                        " shortcutDetails/targetId, shortcutDetails/targetMimeType)"
+                    ),
                     pageSize=1000,
                     pageToken=page_token,
                     supportsAllDrives=True,
@@ -95,8 +123,29 @@ class DriveConnector:
 
             for f in resp.get("files", []):
                 mime = f.get("mimeType", "")
+
+                # Follow shortcuts to folders or images
+                if mime == "application/vnd.google-apps.shortcut":
+                    sd = f.get("shortcutDetails", {})
+                    target_id = sd.get("targetId")
+                    target_mime = sd.get("targetMimeType", "")
+                    if not target_id:
+                        continue
+                    if target_mime == "application/vnd.google-apps.folder":
+                        log.info("shortcut → folder: %s (%s)", f["name"], target_id)
+                        photos.extend(self._list_photos_recursive(target_id, visited))
+                    elif target_mime in IMAGE_MIME_TYPES:
+                        photos.append(PhotoMeta(
+                            id=target_id,
+                            name=f["name"],
+                            thumbnail_url=f.get("thumbnailLink"),
+                            web_view_link=f.get("webViewLink", ""),
+                        ))
+                    continue
+
                 if mime == "application/vnd.google-apps.folder":
-                    photos.extend(self._list_photos_recursive(f["id"]))
+                    log.info("folder: %s (%s)", f["name"], f["id"])
+                    photos.extend(self._list_photos_recursive(f["id"], visited))
                 elif mime in IMAGE_MIME_TYPES:
                     photos.append(
                         PhotoMeta(
@@ -111,6 +160,7 @@ class DriveConnector:
             if not page_token:
                 break
 
+        log.info("folder %s: %d photos found", folder_id, len(photos))
         return photos
 
     def download_photo(self, photo_id: str) -> bytes:

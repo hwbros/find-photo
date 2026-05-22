@@ -29,7 +29,7 @@ class FaceDetector:
                 return []
 
             # keep_all=True always returns (n,3,160,160) even for n=1
-            confident = [(f, p) for f, p in zip(faces, probs) if p > 0.90]
+            confident = [(f, p) for f, p in zip(faces, probs) if p > 0.80]
             if not confident:
                 return []
 

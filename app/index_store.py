@@ -186,6 +186,59 @@ class IndexStore:
                 for p in photos
             ]
 
+    def search_by_face(
+        self, folder_id: str, ref_embedding: np.ndarray, threshold: float
+    ) -> list[dict]:
+        """Return photos whose stored face embeddings exceed cosine similarity threshold."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                """SELECT p.photo_id, p.photo_name, p.drive_url, pf.embedding
+                   FROM photo_faces pf
+                   JOIN photos p ON p.folder_id = pf.folder_id AND p.photo_id = pf.photo_id
+                   WHERE pf.folder_id = ?""",
+                (folder_id,),
+            ).fetchall()
+
+        if not rows:
+            return []
+
+        norm_ref = ref_embedding / (np.linalg.norm(ref_embedding) + 1e-9)
+
+        # group by photo
+        from collections import defaultdict
+        photo_scores: dict[str, float] = defaultdict(float)
+        photo_meta: dict[str, dict] = {}
+        for row in rows:
+            emb = np.frombuffer(row["embedding"], dtype=np.float32)
+            norm_emb = emb / (np.linalg.norm(emb) + 1e-9)
+            score = float(np.dot(norm_ref, norm_emb))
+            pid = row["photo_id"]
+            if score > photo_scores[pid]:
+                photo_scores[pid] = score
+            if pid not in photo_meta:
+                photo_meta[pid] = {
+                    "photo_id": pid,
+                    "photo_name": row["photo_name"],
+                    "drive_url": row["drive_url"],
+                }
+
+        import logging
+        log = logging.getLogger(__name__)
+        all_scores = sorted(photo_scores.values(), reverse=True)
+        log.info(
+            "face score distribution — top10: %s | above %.2f: %d / %d photos",
+            [round(s, 3) for s in all_scores[:10]],
+            threshold,
+            sum(1 for s in all_scores if s >= threshold),
+            len(all_scores),
+        )
+
+        return [
+            {**photo_meta[pid], "face_score": score}
+            for pid, score in photo_scores.items()
+            if score >= threshold
+        ]
+
     def search_by_bib(self, folder_id: str, bib_number: str) -> list[dict]:
         with self._conn() as conn:
             rows = conn.execute(

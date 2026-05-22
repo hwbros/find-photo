@@ -52,7 +52,7 @@ source .venv/Scripts/activate
 pip install -r requirements.txt
 
 # 서버 시작
-uvicorn app.main:app --reload
+uvicorn app.main:app
 ```
 
 > PowerShell을 사용하는 경우:

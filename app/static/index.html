@@ -325,6 +325,7 @@
                onerror="this.style.background='#222';this.style.height='160px'" />
           <div class="thumb-info">
             <span class="badge badge-${r.match_type}">${r.match_type}</span>
+            ${r.face_score != null ? `<span style="font-size:0.68rem;color:#666;margin-left:4px">${r.face_score.toFixed(2)}</span>` : ''}
             <div class="thumb-name">${r.photo_name}</div>
           </div>`;
         grid.appendChild(card);

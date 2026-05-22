@@ -3,7 +3,7 @@ from typing import Literal
 
 import numpy as np
 
-FACE_SIMILARITY_THRESHOLD = 0.70  # Facenet512 cosine similarity (higher = more similar)
+FACE_SIMILARITY_THRESHOLD = 0.72  # VGGFace2 cosine similarity
 
 
 @dataclass
@@ -35,9 +35,11 @@ def search(
 
         bib_match = bib_number.strip() in bibs
 
-        face_score = None
-        face_match = False
-        if ref_embedding is not None and embeddings:
+        # Accept pre-computed face score (from index) or compute on-the-fly
+        face_score: float | None = photo.get("_face_score")
+        face_match = face_score is not None and face_score >= FACE_SIMILARITY_THRESHOLD
+
+        if not face_match and ref_embedding is not None and embeddings:
             scores = [_cosine_similarity(ref_embedding, emb) for emb in embeddings]
             best = max(scores)
             if best >= FACE_SIMILARITY_THRESHOLD:

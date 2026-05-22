@@ -1,4 +1,16 @@
+import io
 import re
+
+from PIL import Image, ImageEnhance
+
+
+def _enhance(image_bytes: bytes) -> bytes:
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    img = ImageEnhance.Contrast(img).enhance(1.5)
+    img = ImageEnhance.Sharpness(img).enhance(1.5)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=90)
+    return buf.getvalue()
 
 
 class BibExtractor:
@@ -13,10 +25,11 @@ class BibExtractor:
 
     def extract_bibs(self, image_bytes: bytes) -> list[str]:
         reader = self._get_reader()
-        results = reader.readtext(image_bytes)
+        enhanced = _enhance(image_bytes)
+        results = reader.readtext(enhanced)
         bibs = set()
         for _, text, confidence in results:
-            cleaned = re.sub(r"\s+", "", text)
-            if re.fullmatch(r"\d{2,6}", cleaned) and confidence > 0.4:
+            cleaned = re.sub(r"[\s\-_.]", "", text)
+            if re.fullmatch(r"\d{2,6}", cleaned) and confidence > 0.3:
                 bibs.add(cleaned)
         return list(bibs)
