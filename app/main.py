@@ -107,7 +107,7 @@ async def start_index(req: ConnectRequest):
         def run_in_thread():
             try:
                 for progress in indexer_module.run(
-                    req.folder_url, connector, store, bib_extractor, face_detector
+                    req.folder_url, connector, store, bib_extractor
                 ):
                     loop.call_soon_threadsafe(queue.put_nowait, progress)
             except Exception as e:
@@ -148,12 +148,27 @@ async def search(
     ref_embedding: np.ndarray | None = None
     if reference_photo:
         img_bytes = await reference_photo.read()
-        embeddings = face_detector.detect_faces(img_bytes)
-        if embeddings:
-            ref_embedding = embeddings[0]
+        embs = face_detector.detect_faces(img_bytes)
+        if embs:
+            ref_embedding = embs[0]
 
-    indexed_photos = store.get_all_photos(folder_id)
-    results = search_engine.search(indexed_photos, ref_embedding, bib_number)
+    # Step 1: bib search from index — O(1), very fast
+    bib_photos = store.search_by_bib(folder_id, bib_number.strip())
+
+    # Step 2: face detection on bib-matched photos only (download on demand)
+    # This keeps face detection to a small subset instead of all 17,872 photos.
+    photos_for_engine = []
+    for photo in bib_photos:
+        embeddings = []
+        if ref_embedding is not None:
+            try:
+                img = connector.download_photo(photo["photo_id"])
+                embeddings = face_detector.detect_faces(img)
+            except Exception:
+                pass
+        photos_for_engine.append({**photo, "bibs": [bib_number.strip()], "embeddings": embeddings})
+
+    results = search_engine.search(photos_for_engine, ref_embedding, bib_number)
 
     return {
         "results": [

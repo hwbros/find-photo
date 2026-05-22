@@ -7,7 +7,6 @@ from PIL import Image
 
 from app.bib_extractor import BibExtractor
 from app.drive_connector import DriveConnector
-from app.face_detector import FaceDetector
 from app.index_store import IndexStore
 
 MAX_IMAGE_PX = 800
@@ -28,7 +27,6 @@ def run(
     connector: DriveConnector,
     store: IndexStore,
     bib_extractor: BibExtractor,
-    face_detector: FaceDetector | None = None,
 ) -> Generator[dict, None, None]:
     folder_id = DriveConnector.parse_folder_id(folder_url)
 
@@ -70,11 +68,7 @@ def run(
                 bibs = bib_extractor.extract_bibs(img_bytes) if img_bytes else []
             except Exception:
                 bibs = []
-            try:
-                embeddings = face_detector.detect_faces(img_bytes) if (face_detector and img_bytes) else []
-            except Exception:
-                embeddings = []
-            store.save_photo(folder_id, photo.id, photo.name, photo.web_view_link, bibs, embeddings)
+            store.save_photo(folder_id, photo.id, photo.name, photo.web_view_link, bibs)
             processed += 1
             yield {
                 "stage": "indexing",
