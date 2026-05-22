@@ -63,6 +63,13 @@ class IndexStore:
             ).fetchone()
             return row is not None
 
+    def get_indexed_photo_ids(self, folder_id: str) -> set[str]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT photo_id FROM photos WHERE folder_id = ?", (folder_id,)
+            ).fetchall()
+            return {r["photo_id"] for r in rows}
+
     def init_folder(self, folder_id: str, folder_url: str, total: int):
         now = datetime.now(timezone.utc).isoformat()
         with self._conn() as conn:
@@ -70,7 +77,8 @@ class IndexStore:
                 """INSERT INTO folders (folder_id, folder_url, status, total, indexed, started_at)
                    VALUES (?, ?, 'indexing', ?, 0, ?)
                    ON CONFLICT(folder_id) DO UPDATE SET
-                       status='indexing', total=excluded.total, indexed=0, started_at=excluded.started_at, completed_at=NULL""",
+                       status='indexing', total=excluded.total,
+                       started_at=excluded.started_at, completed_at=NULL""",
                 (folder_id, folder_url, total, now),
             )
 
