@@ -8,7 +8,7 @@ class BibExtractor:
     def _get_reader(self):
         if self._reader is None:
             import easyocr
-            self._reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+            self._reader = easyocr.Reader(["en"], gpu=True, verbose=False)
         return self._reader
 
     def extract_bibs(self, image_bytes: bytes) -> list[str]:
