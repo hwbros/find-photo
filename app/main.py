@@ -1,14 +1,27 @@
 import json
 import logging
+import os
 import threading
 import asyncio
-
-import numpy as np
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+
+# Register PyTorch CUDA DLLs BEFORE any onnxruntime import so
+# InsightFace / onnxruntime-gpu can find them on Windows.
+try:
+    import torch
+    from pathlib import Path
+    _torch_lib = Path(torch.__file__).parent / "lib"
+    if _torch_lib.exists():
+        os.add_dll_directory(str(_torch_lib))
+        os.environ["PATH"] = str(_torch_lib) + os.pathsep + os.environ.get("PATH", "")
+except Exception:
+    pass
+
+import numpy as np
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
