@@ -7,5 +7,5 @@ python-multipart>=0.0.9
 easyocr>=1.7.0
 insightface>=0.7.3
 opencv-python-headless>=4.8.0
-# insightface pulls in onnxruntime (CPU) — reinstall GPU version last
+# insightface pulls in onnxruntime (CPU) - reinstall GPU version last
 onnxruntime-gpu>=1.18.0
