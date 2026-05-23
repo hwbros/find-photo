@@ -145,7 +145,7 @@ def clear_index(folder_id: str):
 async def search(
     folder_url: str = Form(...),
     bib_number: str = Form(...),
-    reference_photo: UploadFile | None = File(default=None),
+    reference_photos: list[UploadFile] = File(default=[]),
 ):
     folder_id = DriveConnector.parse_folder_id(folder_url)
     if not store.is_indexed(folder_id):
@@ -154,15 +154,26 @@ async def search(
     log = logging.getLogger(__name__)
     bib = bib_number.strip()
 
+    # Collect embeddings from all reference photos, then average → robust representation
     ref_embedding: np.ndarray | None = None
-    if reference_photo:
-        img_bytes = await reference_photo.read()
+    all_ref_embs: list[np.ndarray] = []
+    for ref_file in reference_photos:
+        if ref_file.size == 0:
+            continue
+        img_bytes = await ref_file.read()
         embs = face_detector.detect_faces(img_bytes)
-        log.info("reference photo: %d face(s) detected", len(embs))
         if embs:
-            ref_embedding = embs[0]
+            all_ref_embs.append(embs[0])  # best (largest/most confident) face per photo
         else:
-            log.warning("no face detected in reference photo — face search disabled")
+            log.warning("no face in reference photo '%s'", ref_file.filename)
+
+    if all_ref_embs:
+        avg = np.mean(all_ref_embs, axis=0)
+        norm = np.linalg.norm(avg)
+        ref_embedding = avg / norm if norm > 0 else None
+        log.info("reference: %d photo(s) → averaged embedding", len(all_ref_embs))
+    elif reference_photos:
+        log.warning("no face detected in any reference photo — face search disabled")
 
     # Bib search: O(1) DB lookup
     bib_photos = {p["photo_id"]: p for p in store.search_by_bib(folder_id, bib)}

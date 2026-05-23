@@ -128,10 +128,13 @@
     <div class="card-title">검색</div>
     <label>배번호</label>
     <input type="text" id="bibInput" placeholder="예: 1234" style="margin-bottom:16px" />
-    <label>기준 사진 <span style="color:#555;font-weight:400">(선택 — 얼굴 인식용)</span></label>
-    <input type="file" id="refPhoto" accept="image/*"
-      style="margin-bottom:16px;color:#aaa;background:#111;border:1px solid #333;
+    <label>기준 사진 <span style="color:#555;font-weight:400">(선택 — 얼굴 인식용, 여러 장 선택 가능)</span></label>
+    <input type="file" id="refPhoto" accept="image/*" multiple
+      style="margin-bottom:4px;color:#aaa;background:#111;border:1px solid #333;
              border-radius:8px;padding:8px 12px;width:100%;cursor:pointer" />
+    <p style="font-size:0.78rem;color:#555;margin-bottom:16px">
+      💡 정면·모자 없는 사진 1-3장 선택 시 정확도 향상 (Ctrl+클릭으로 다중 선택)
+    </p>
     <button class="btn-primary" id="searchBtn" onclick="search()">검색</button>
     <div id="searchStatus"></div>
     <div class="grid" id="resultsGrid"></div>
@@ -295,8 +298,8 @@
       const form = new FormData();
       form.append('folder_url', url);
       form.append('bib_number', bib);
-      const refFile = document.getElementById('refPhoto').files[0];
-      if (refFile) form.append('reference_photo', refFile);
+      const refFiles = document.getElementById('refPhoto').files;
+      for (const f of refFiles) form.append('reference_photos', f);
 
       const res = await fetch('/api/search', { method: 'POST', body: form });
       const data = await res.json();

@@ -1,42 +1,49 @@
-import io
+import logging
 
+import cv2
 import numpy as np
-import torch
-from PIL import Image
+
+log = logging.getLogger(__name__)
+
+MIN_DET_SCORE = 0.5   # RetinaFace detection confidence
+MIN_FACE_PX   = 40    # ignore faces smaller than 40px (likely noise)
 
 
 class FaceDetector:
     def __init__(self):
-        self._mtcnn = None
-        self._resnet = None
-        self._device = None
+        self._app = None
 
     def _load(self):
-        if self._mtcnn is not None:
+        if self._app is not None:
             return
-        from facenet_pytorch import MTCNN, InceptionResnetV1
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self._mtcnn = MTCNN(keep_all=True, device=self._device, post_process=True)
-        self._resnet = InceptionResnetV1(pretrained="vggface2").eval().to(self._device)
+        from insightface.app import FaceAnalysis
+        self._app = FaceAnalysis(
+            name="buffalo_l",
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+        )
+        self._app.prepare(ctx_id=0, det_size=(640, 640))
+        log.info("InsightFace buffalo_l loaded (ArcFace + RetinaFace)")
 
     def detect_faces(self, image_bytes: bytes) -> list[np.ndarray]:
+        """Return list of L2-normalised 512-d ArcFace embeddings."""
         self._load()
         try:
-            img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-            faces, probs = self._mtcnn(img, return_prob=True)
-
-            if faces is None or probs is None:
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)  # BGR, as InsightFace expects
+            if img is None:
                 return []
-
-            # keep_all=True always returns (n,3,160,160) even for n=1
-            confident = [(f, p) for f, p in zip(faces, probs) if p > 0.80]
-            if not confident:
-                return []
-
-            batch = torch.stack([f for f, _ in confident]).to(self._device)
-            with torch.no_grad():
-                embeddings = self._resnet(batch)
-
-            return [emb.cpu().numpy() for emb in embeddings]
-        except Exception:
+            faces = self._app.get(img)
+            result = []
+            for face in faces:
+                if face.det_score < MIN_DET_SCORE:
+                    continue
+                box = face.bbox  # [x1, y1, x2, y2]
+                w = box[2] - box[0]
+                h = box[3] - box[1]
+                if w < MIN_FACE_PX or h < MIN_FACE_PX:
+                    continue
+                result.append(face.normed_embedding.astype(np.float32))
+            return result
+        except Exception as exc:
+            log.warning("face detection error: %s", exc)
             return []

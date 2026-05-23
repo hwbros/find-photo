@@ -3,7 +3,9 @@ from typing import Literal
 
 import numpy as np
 
-FACE_SIMILARITY_THRESHOLD = 0.72  # VGGFace2 cosine similarity
+FACE_SIMILARITY_THRESHOLD = 0.35  # ArcFace (InsightFace buffalo_l) cosine similarity
+# ArcFace score distribution: same-person ~0.4-0.8, different-person ~-0.2-0.3
+# Threshold 0.35 gives ~0.01% false-accept rate on standard benchmarks
 
 
 @dataclass
